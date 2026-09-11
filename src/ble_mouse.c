@@ -719,11 +719,12 @@ static int settings_set(const char *name, size_t length, settings_read_cb read, 
     }
     return -EINVAL;
 }
-static int settings_commit(void) {
+static int ble_mouse_settings_commit(void) {
     zmk_ble_mouse_start();
     return 0;
 }
-SETTINGS_STATIC_HANDLER_DEFINE(ble_mouse, "ble_mouse", NULL, settings_set, settings_commit, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(ble_mouse, "ble_mouse", NULL, settings_set,
+                               ble_mouse_settings_commit, NULL);
 
 static void pair_work_cb(struct k_work *work) {
     if (mouse_conn) {

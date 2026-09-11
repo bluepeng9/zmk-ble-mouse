@@ -30,7 +30,7 @@ static void reset_client(unsigned existing_bonds) {
     received = released = 0;
     fake_bond_count = existing_bonds;
     for (unsigned i = 0; i < existing_bonds; i++) fake_bonds[i].addr = fake_address(i + 1);
-    assert(settings_commit() == 0);
+    assert(ble_mouse_settings_commit() == 0);
     fake_drain();
 }
 
