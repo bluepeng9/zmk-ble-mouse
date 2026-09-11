@@ -1,0 +1,3 @@
+description: BLE HID mouse receiver exposed as a Zephyr input device
+compatible: "zmk,ble-mouse-receiver"
+include: base.yaml

@@ -1,0 +1,4 @@
+#include <test_runtime.h>
+#ifndef ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT
+#define ZMK_SPLIT_CENTRAL_PERIPHERAL_COUNT 2
+#endif

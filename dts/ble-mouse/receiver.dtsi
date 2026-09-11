@@ -1,0 +1,12 @@
+/ {
+    ble_mouse_receiver: ble_mouse_receiver {
+        compatible = "zmk,ble-mouse-receiver";
+        status = "okay";
+    };
+
+    ble_mouse_listener: ble_mouse_listener {
+        compatible = "zmk,input-listener";
+        device = <&ble_mouse_receiver>;
+        status = "okay";
+    };
+};

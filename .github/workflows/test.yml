@@ -1,0 +1,12 @@
+name: Test BLE mouse module
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 tests/run_tests.py --sanitize
+      - run: python3 tests/check_module.py

@@ -1,0 +1,3 @@
+description: Pair a BLE mouse or clear only its bond after a two-second hold
+compatible: "zmk,behavior-ble-mouse"
+include: one_param.yaml

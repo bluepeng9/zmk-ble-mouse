@@ -1,0 +1,11 @@
+#include <dt-bindings/zmk/ble_mouse.h>
+
+/ {
+    behaviors {
+        ble_mouse: ble_mouse {
+            compatible = "zmk,behavior-ble-mouse";
+            #binding-cells = <1>;
+            display-name = "BLE Mouse";
+        };
+    };
+};

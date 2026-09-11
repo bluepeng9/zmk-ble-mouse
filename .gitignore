@@ -1,0 +1,15 @@
+/build/
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local configuration
+.env
+.env.*
+!.env.example
+/.vscode/
+/.idea/
+
+# Operating system files
+.DS_Store
+Thumbs.db

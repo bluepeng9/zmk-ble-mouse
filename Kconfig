@@ -1,0 +1,35 @@
+config ZMK_BEHAVIOR_BLE_MOUSE
+    bool
+    default y if DT_HAS_ZMK_BEHAVIOR_BLE_MOUSE_ENABLED
+
+config ZMK_BLE_MOUSE_CENTRAL
+    bool "Receive a bonded BLE HID mouse on the split dongle"
+    depends on ZMK_SPLIT_BLE && ZMK_SPLIT_ROLE_CENTRAL && ZMK_POINTING
+    depends on BT_SMP && SETTINGS
+    depends on DT_HAS_ZMK_BLE_MOUSE_RECEIVER_ENABLED
+    depends on !BT_FILTER_ACCEPT_LIST
+    select BT_GATT_CLIENT
+    help
+      Uses a free connection and bond within the existing Bluetooth limits.
+      Does not change the PC profile count or evict existing bonds.
+      When split battery fetching is enabled, a module-owned linker wrapper
+      rejects invalid battery source IDs before calling the original ZMK
+      event handler. The upstream sources and battery setting stay intact.
+
+if ZMK_BLE_MOUSE_CENTRAL
+
+config ZMK_BLE_MOUSE_STACK_SIZE
+    int "BLE mouse control thread stack size"
+    default 4096
+
+config ZMK_BLE_MOUSE_QUEUE_SIZE
+    int "BLE mouse input queue length"
+    range 8 128
+    default 32
+
+config ZMK_BLE_MOUSE_LOG_LEVEL
+    int "BLE mouse log level (0 off, 1 errors, 2 warnings, 3 info, 4 debug)"
+    range 0 4
+    default 3
+
+endif
