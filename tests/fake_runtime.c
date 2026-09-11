@@ -154,6 +154,11 @@ void bt_conn_unref(struct bt_conn *conn) { assert(conn->references > 0); conn->r
 int bt_conn_set_security(struct bt_conn *conn, bt_security_t level) { return 0; }
 bt_security_t bt_conn_get_security(struct bt_conn *conn) { return conn->security; }
 const bt_addr_le_t *bt_conn_get_dst(struct bt_conn *conn) { return &conn->addr; }
+int bt_conn_get_info(const struct bt_conn *conn, struct bt_conn_info *info) {
+    if (!conn) return -EINVAL;
+    *info = (struct bt_conn_info){.type = BT_CONN_TYPE_LE, .role = conn->role, .id = conn->id};
+    return 0;
+}
 void bt_foreach_bond(uint8_t id, void (*fn)(const struct bt_bond_info *,void *), void *data) {
     for (unsigned i = 0; i < fake_bond_count; i++) fn(&fake_bonds[i], data);
 }

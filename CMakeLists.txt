@@ -10,3 +10,7 @@ if(CONFIG_ZMK_BLE_MOUSE_CENTRAL AND CONFIG_ZMK_SPLIT_BLE_CENTRAL_BATTERY_LEVEL_F
   target_sources(app PRIVATE src/split_battery_guard.c)
   zephyr_link_libraries(-Wl,--wrap=zmk_split_transport_central_peripheral_event_handler)
 endif()
+
+if(CONFIG_ZMK_BLE_MOUSE_LEGACY_PAIRING)
+  include(cmake/legacy_pairing.cmake)
+endif()

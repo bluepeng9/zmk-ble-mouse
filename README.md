@@ -3,14 +3,17 @@
 An independent Zephyr module for ZMK that receives BLE HID reports from one
 Logitech M720. The module
 contains its own parser, GATT client, input device, behavior and host tests. It
-uses Zephyr/ZMK APIs without modifying, patching or replacing ZMK source files.
-One module-owned linker wrapper validates split battery events before forwarding
-them to the original ZMK handler.
+uses Zephyr/ZMK APIs without modifying, patching or replacing upstream source
+files. Module-owned linker wrappers validate split battery events and, when
+Legacy compatibility is enabled, enforce mouse pairing policy and preserve
+SC-only bond storage. A compiler header includes Legacy SMP support in the
+receiver image; this explicitly changes the compiled Bluetooth host policy.
 
-**Status:** split keyboard battery fetching remains enabled. The module filters
-invalid battery sources from non-split disconnects, allowing the receiver to
-start with that setting. Firmware compilation and physical M720 validation remain
-outstanding; host tests do not establish readiness for hardware use.
+**Status:** Legacy compatibility addresses the SC-only build configuration found
+during M720 pairing diagnosis. The nice_nano_v2 central dongle image compiles and
+links with the compatibility layer. Physical M720 pairing/report validation
+remains outstanding; host tests and a build do not establish hardware readiness.
+Split keyboard battery fetching remains enabled with its invalid-source guard.
 
 ## Data path and package boundary
 
@@ -32,13 +35,19 @@ scope. Report fixtures are synthetic; physical M720 reports have not been captur
 | `src/mouse_output.c` | Virtual Zephyr input device and endpoint event listener |
 | `src/behavior_ble_mouse.c` | Pair/Clear behavior |
 | `src/split_battery_guard.c` | Bounds check before the original split battery handler |
+| `cmake/legacy_pairing.cmake`, `include/ble_mouse/legacy_config.h` | Consistent receiver-wide Legacy compiler configuration |
+| `src/auth_guard.c`, `src/smp_guard.c` | Mouse-only Legacy admission and local SC capability requirement |
+| `src/bond_compat.c` | Read old SC bond records and retain their original storage format |
 | `include/`, `dts/` | Module interfaces and devicetree bindings |
 | `scripts/verify_build.py` | Receiver configuration and compatibility checks |
 | `tests/` | Parser, client, radio and input tests using host fakes |
 
 There are no source patches, build-time source rewrites or replacement upstream
-implementations. The single linker wrapper and its build flag are contained in
-this module. The module does not read a parent keyboard
+implementations. The compiler shim and enumerated linker wrappers are contained
+in this module. Legacy compatibility reads the selected host's private `keys.h`
+and `hci_core.h` declarations, with a Zephyr 3.5 version gate and key-layout
+assertions. It is not an implementation-independent extension of Bluetooth.
+The module does not read a parent keyboard
 configuration or define Bluetooth connection, bond or PC-profile limits.
 It does not pin, inspect or override an upstream Git revision. The containing
 keyboard chooses its ZMK version through its existing West manifest.
@@ -94,11 +103,73 @@ CONFIG_ZMK_POINTING=y
 CONFIG_ZMK_BLE_MOUSE_CENTRAL=y
 ```
 
+On the supported SC-only ZMK configuration,
+`CONFIG_ZMK_BLE_MOUSE_LEGACY_PAIRING` defaults to `y`, so an existing receiver
+integration picks up the change when this module is updated and the dongle is
+rebuilt. No keyboard manifest fork or upstream source patch is needed. See the
+compatibility contract below before flashing. Setting it to `n` restores the
+original SC-only build and cannot pair a Legacy-only mouse.
+
 SMP, settings and Zephyr's address-based auto-connect API are required. The latter
 requires `CONFIG_BT_FILTER_ACCEPT_LIST` to remain disabled. The module does not
 change that global option. The integration targets the existing Zephyr 3.5 / ZMK
 v0.3+DYA APIs; independence from source edits does not imply compatibility with
 every future API version.
+
+### Legacy pairing compatibility contract
+
+ZMK 0.3 selects `BT_SMP_SC_PAIR_ONLY`, excluding Legacy SMP code even when the
+mouse client requests encrypted security level L2. A `.conf` assignment to `n`
+cannot undo that Kconfig `select`. The module uses GCC's `-include` after Zephyr's
+`-imacros autoconf.h` to undefine only that macro. It applies to the entire image,
+not just `smp.c`, because Bluetooth key structure layout changes too. The
+generated `.config` still reports `CONFIG_BT_SMP_SC_PAIR_ONLY=y`; the CMake status
+message and build verifier report the effective compatibility mode explicitly.
+
+This option enables the following guards, all owned by this module:
+
+- `bt_conn_auth_cb_register`: preserves the application's callback table,
+  including occupied-profile checks and I/O callbacks, and adds an admission
+  check. Legacy pairing is accepted only for the module's selected new M720,
+  in the 60-second Pair window, on a central connection with the default identity.
+  Saved mouse bonds reconnect normally; a missing/stale bond must be cleared
+  explicitly instead of silently paired again. Other devices still require SC.
+- `bt_smp_init`: retains the original requirement for local SC commands before
+  the Bluetooth host starts. A peer's SC flag alone cannot weaken that policy.
+- `settings_call_set_handler`: expands old SC-only bond records in memory before
+  the original settings handler reads them. It does not rewrite flash at boot.
+  Direct/raw settings reads, unrelated subtrees and deletions are unchanged.
+  Invalid short/unknown records are refused before upstream can delete them.
+- `settings_save_one`: writes SC PC/keyboard bonds in their original short format;
+  Legacy mouse records retain the full format. SC records therefore remain
+  readable by the previous SC-only firmware. A downgrade cannot use the Legacy
+  mouse bond and may discard that mouse record; it requires re-pairing on upgrade.
+
+Authentication callback tables are immutable once registered, matching the
+supported ZMK application's single static registration. A second registration
+returns `-EALREADY`; callback removal and per-connection auth overlays return
+`-ENOTSUP`. Overlays, including a NULL overlay, would bypass the admission guard.
+An immutable SC-only table protects startup connections before ZMK registration.
+Applications requiring dynamic auth replacement or overlays need a new integration.
+
+Supported builds use GCC/GNU wrapping, Zephyr 3.5, SMP application admission and
+Bluetooth settings. LTO, BR/EDR, SC-only security level L4 mode, OOB-only Legacy,
+unauthenticated bond overwrite and automatic oldest-bond eviction are refused.
+Private header/API or storage layout changes require review, even within 3.5.
+The only device-name filter is discovery selection; it does not authenticate the
+identity of a device advertising an M720 name.
+
+Before flashing, build with `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON` and run:
+
+```sh
+python3 scripts/verify_build.py /path/to/build --require-enabled
+```
+
+The verifier requires every compilation to include the compatibility header and
+the final policy/storage wrapper definitions to exist. Actual call routing,
+pairing success, bond restoration and USB/BLE output still need hardware testing.
+Pairing/security failures now log the Zephyr reason code when logging is enabled;
+enabling only the mouse log level does not enable the global logging backend.
 
 ### Assign controls in your keyboard keymap
 
@@ -215,7 +286,10 @@ python3 scripts/verify_build.py /path/to/build --require-enabled
 ```
 
 This reads the generated `.config` and, with battery fetching enabled, checks the
-final `zephyr/zephyr.map` for both the wrapper and original handler definitions.
+final map (`zephyr/zmk.map` when `CONFIG_KERNEL_BIN_NAME="zmk"`) for both the
+wrapper and original handler definitions.
+With Legacy compatibility enabled it also checks the auth/SMP/storage symbols
+and `compile_commands.json` for consistent compiler configuration.
 It does not read West manifests or Git state. Symbol presence alone does not prove
 call routing on the device; retain the firmware/hardware checks below.
 
@@ -233,9 +307,21 @@ Clear hold duration, button ownership, overflow, pending endpoint resets and
 reentrant input callbacks. A separate test calls the public battery handler through the
 actual linker wrapper, rejects every invalid 8-bit source, and checks preservation
 of keyboard battery values, disconnect updates and other event payloads.
+Auth, local SC capability and bond adapters are exercised through real GNU linker
+wrapping. Bond tests cover signed/unsigned record layouts, old SC and new Legacy
+records, failed/short reads, raw/subtree loads, deletion and storage errors.
 
-Host tests passed on Windows with GCC. Firmware compilation, actual upstream
-input/HOG behavior and physical M720 validation remain outstanding. Test USB/BLE
+Host tests passed on Windows with GCC. A full nice_nano_v2 image with
+`eyelash_sofle_central_dongle dongle_display`, Studio USB RPC, Zephyr 3.5 and
+Zephyr SDK 0.16.8/GCC 12.2 builds successfully. Its final image contains Legacy
+SMP code, and disassembly confirms auth registration, SMP init, NVS loading,
+Bluetooth key saving and split events call the intended wrappers. The local
+Windows build uses `-ULV_CONF_PATH` to select the existing LVGL include directory
+without expanding the drive letter as ZMK's `C` keycode macro; no upstream file
+is edited for that build adjustment.
+
+Actual upstream input/HOG behavior and physical M720 validation remain
+outstanding. Test USB/BLE
 movement, five buttons, wheel/tilt,
 OUT changes, keyboard mouse keys, all configured split peripherals reconnecting,
 mouse sleep/wake, restart, Clear and full bond capacity. Confirm that each

@@ -11,6 +11,7 @@ void zmk_ble_mouse_start(void);
 int zmk_ble_mouse_pair(void);
 void zmk_ble_mouse_clear_hold(bool pressed);
 bool zmk_ble_mouse_wants_scan(void);
+bool zmk_ble_mouse_legacy_pairing_allowed(struct bt_conn *conn);
 bool zmk_ble_mouse_advertisement(const bt_addr_le_t *addr, uint8_t type,
                                  struct net_buf_simple *ad);
 

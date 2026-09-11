@@ -67,6 +67,20 @@ K_WORK_DELAYABLE_DEFINE(pair_timeout, pair_timeout_cb);
 
 static bool owns(struct bt_conn *conn) { return conn && conn == mouse_conn; }
 
+bool zmk_ble_mouse_legacy_pairing_allowed(struct bt_conn *conn) {
+    struct bt_conn_info info;
+    int current = atomic_get(&stage);
+    if (!conn || !atomic_get(&pairing) || atomic_get(&have_peer) ||
+        atomic_get(&failure) || !new_candidate ||
+        (current != CONNECTING && current != SECURITY) ||
+        bt_conn_get_info(conn, &info) || info.type != BT_CONN_TYPE_LE ||
+        info.role != BT_CONN_ROLE_CENTRAL || info.id != BT_ID_DEFAULT) return false;
+    /* Auto-connect may complete before its lookup returns. The address was
+     * selected by this client's M720 discovery, never by a peer's auth request. */
+    return owns(conn) || (!mouse_conn && current == CONNECTING &&
+                         !bt_addr_le_cmp(bt_conn_get_dst(conn), &connecting_address));
+}
+
 static bool valid_callback(struct bt_conn *conn) {
     return owns(conn) && !atomic_get(&failure) && atomic_get(&stage) != CLOSING;
 }
@@ -188,8 +202,8 @@ static int connect_mouse(const bt_addr_le_t *addr) {
     candidate_bonded = false;
     atomic_clear(&failure);
     atomic_clear(&scan_wanted);
-    atomic_set(&stage, CONNECTING);
     bt_addr_le_copy(&connecting_address, addr);
+    atomic_set(&stage, CONNECTING);
     /* 7.5-15 ms; no peripheral latency requested. Keep the keyboard settings. */
     int err = bt_le_set_auto_conn(addr, BT_LE_CONN_PARAM(6, 12, 0, 400));
     if (!err) {
@@ -676,6 +690,7 @@ static void security_cb(struct bt_conn *conn, bt_security_t level, enum bt_secur
         return;
     }
     if (err) {
+        LOG_WRN("Mouse security failed: reason=%u level=%u", (unsigned)err, (unsigned)level);
         fail(-EACCES);
     } else if (level >= BT_SECURITY_L2 && atomic_cas(&stage, SECURITY, SERVICE)) {
         zmk_ble_mouse_submit(&discovery_work);
@@ -693,6 +708,7 @@ static void pairing_complete_cb(struct bt_conn *conn, bool bonded) {
 
 static void pairing_failed_cb(struct bt_conn *conn, enum bt_security_err reason) {
     if (owns(conn)) {
+        LOG_WRN("Mouse pairing failed: reason=%u", (unsigned)reason);
         fail(-EACCES);
     }
 }

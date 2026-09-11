@@ -259,7 +259,7 @@ static void test_setup_failures(void) {
     assert_failed_candidate();
 }
 
-static int read_peer(void *arg, void *data, size_t length) {
+static ssize_t read_peer(void *arg, void *data, size_t length) {
     memcpy(data, arg, length);
     return length;
 }
@@ -304,11 +304,52 @@ static void test_cancel_race_and_saved_settings(void) {
     assert(!fake_connection.references && !forget_requested && !pairing);
 }
 
+static void test_legacy_pairing_scope(void) {
+    reset_client(2);
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(NULL));
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    pair_request();
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    advertise(9, BT_GAP_ADV_TYPE_ADV_IND, "M720 Triathlon");
+    assert(zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    struct bt_conn other = {.addr = fake_address(8)};
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&other));
+    fake_connection.role = BT_CONN_ROLE_PERIPHERAL;
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    fake_connection.role = BT_CONN_ROLE_CENTRAL;
+    fake_connection.id = 1;
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    fake_connection.id = 0;
+    link_connected();
+    assert(zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    encrypted();
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+
+    reset_client(2);
+    pair_request();
+    advertise(9, BT_GAP_ADV_TYPE_ADV_IND, "M720 Triathlon");
+    /* The early auto-connect callback can arrive before lookup returns. */
+    struct bt_conn *held = mouse_conn;
+    mouse_conn = NULL;
+    assert(zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&other));
+    mouse_conn = held;
+    atomic_set(&failure, -ECANCELED);
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    atomic_clear(&failure);
+    atomic_clear(&pairing);
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+    atomic_set(&pairing, 1);
+    atomic_set(&have_peer, 1);
+    assert(!zmk_ble_mouse_legacy_pairing_allowed(&fake_connection));
+}
+
 int main(void) {
     test_capacity_and_discovery_window();
     test_reports_reconnect_and_clear();
     test_setup_failures();
     test_cancel_race_and_saved_settings();
+    test_legacy_pairing_scope();
     puts("BLE client lifecycle: passed (mocked controller/GATT, production client)");
     return 0;
 }

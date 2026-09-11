@@ -18,6 +18,19 @@ config ZMK_BLE_MOUSE_CENTRAL
 
 if ZMK_BLE_MOUSE_CENTRAL
 
+config ZMK_BLE_MOUSE_LEGACY_PAIRING
+    bool "Allow Legacy pairing for the explicitly selected mouse"
+    default y
+    depends on BT_SMP_SC_PAIR_ONLY && BT_SMP_APP_PAIRING_ACCEPT && BT_SETTINGS
+    help
+      Include Legacy SMP support using a module-owned compiler header.
+      Restrict Legacy pairing to a new mouse during the Pair window and
+      retain the application's authentication callbacks for every connection.
+      Adapt old SC-only bond records on read, without rewriting them at boot.
+      Requires the reviewed Zephyr 3.5 host/settings interfaces and GNU wrapping.
+      Authentication callback removal and per-connection overlays are refused
+      while this compatibility layer is enabled. See README for build checks.
+
 config ZMK_BLE_MOUSE_STACK_SIZE
     int "BLE mouse control thread stack size"
     default 4096

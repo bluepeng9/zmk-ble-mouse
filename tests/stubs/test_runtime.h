@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/types.h>
 
 #define CONFIG_BT_MAX_PAIRED 6
 #define CONFIG_BT_KEYS_OVERWRITE_OLDEST 0
@@ -14,6 +15,8 @@
 #define CONFIG_ZMK_BLE_MOUSE_CENTRAL 1
 #define IS_ENABLED(x) (x)
 #define BUILD_ASSERT(c, m) _Static_assert(c, m)
+#define ARG_UNUSED(x) (void)(x)
+#define ROUND_UP(x,a) ((((x) + (a) - 1) / (a)) * (a))
 #define BIT(n) (1u << (n))
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 #define MIN(a,b) ((a) < (b) ? (a) : (b))
@@ -122,12 +125,30 @@ extern bt_le_scan_cb_t *fake_scan_callback;
 void bt_data_parse(struct net_buf_simple *, bool (*cb)(struct bt_data *,void *), void *);
 
 typedef uint8_t bt_security_t;
-enum bt_security_err { BT_SECURITY_ERR_SUCCESS, BT_SECURITY_ERR_AUTH_FAIL };
+enum bt_security_err { BT_SECURITY_ERR_SUCCESS, BT_SECURITY_ERR_AUTH_FAIL,
+    BT_SECURITY_ERR_AUTH_REQUIREMENT, BT_SECURITY_ERR_PAIR_NOT_ALLOWED };
 #define BT_SECURITY_L2 2
 #define BT_HCI_ERR_REMOTE_USER_TERM_CONN 0x13
 enum bt_conn_state { BT_CONN_STATE_DISCONNECTED, BT_CONN_STATE_CONNECTING,
                      BT_CONN_STATE_CONNECTED, BT_CONN_STATE_DISCONNECTING };
-struct bt_conn { bt_addr_le_t addr; uint8_t security; int references; enum bt_conn_state state; };
+#define BT_CONN_TYPE_LE 1
+#define BT_CONN_ROLE_CENTRAL 0
+#define BT_CONN_ROLE_PERIPHERAL 1
+struct bt_conn { bt_addr_le_t addr; uint8_t security; int references;
+    enum bt_conn_state state; uint8_t role, id; };
+struct bt_conn_info { uint8_t type, role, id; };
+int bt_conn_get_info(const struct bt_conn *, struct bt_conn_info *);
+struct bt_conn_pairing_feat { uint8_t auth_req; };
+struct bt_conn_auth_cb {
+    enum bt_security_err (*pairing_accept)(struct bt_conn *, const struct bt_conn_pairing_feat *);
+    void (*passkey_display)(struct bt_conn *, unsigned int);
+    void (*passkey_entry)(struct bt_conn *);
+    void (*passkey_confirm)(struct bt_conn *, unsigned int);
+    void (*pairing_confirm)(struct bt_conn *);
+    void (*cancel)(struct bt_conn *);
+};
+int bt_conn_auth_cb_register(const struct bt_conn_auth_cb *);
+int bt_conn_auth_cb_overlay(struct bt_conn *, const struct bt_conn_auth_cb *);
 struct bt_bond_info { bt_addr_le_t addr; };
 struct bt_le_conn_param { int min, max, latency, timeout; };
 #define BT_LE_CONN_PARAM(a,b,c,d) (&(struct bt_le_conn_param){a,b,c,d})
@@ -201,7 +222,12 @@ int bt_gatt_write(struct bt_conn *, struct bt_gatt_write_params *);
 int bt_gatt_write_without_response(struct bt_conn *, uint16_t, const void *, uint16_t, bool);
 int bt_gatt_subscribe(struct bt_conn *, struct bt_gatt_subscribe_params *);
 
-typedef int (*settings_read_cb)(void *, void *, size_t);
+typedef ssize_t (*settings_read_cb)(void *, void *, size_t);
+typedef int (*settings_load_direct_cb)(const char *, size_t, settings_read_cb, void *, void *);
+struct settings_load_arg { const char *subtree; settings_load_direct_cb cb; void *param; };
+int settings_name_steq(const char *, const char *, const char **);
+int settings_call_set_handler(const char *, size_t, settings_read_cb, void *,
+                              const struct settings_load_arg *);
 #define SETTINGS_STATIC_HANDLER_DEFINE(n,p,a,b,c,d) typedef int settings_stub_##n
 int settings_save_one(const char *,const void *,size_t);
 int settings_delete(const char *);
